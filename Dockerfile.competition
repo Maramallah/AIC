@@ -37,7 +37,7 @@ WORKDIR /app
 # rather than relying on `COPY . /app` from a local build context.
 # CHANGE REPO_URL/REPO_REF to your actual repo + branch/tag/commit before
 # submitting (pin to a commit SHA for a reproducible submission).
-ARG REPO_URL=https://github.com/youssef-othman12/MTC-AIC4-EagleAI.git
+ARG REPO_URL=https://github.com/Maramallah/AIC.git
 ARG REPO_REF=main
 
 ARG TRT_VER=10.16.1.11-1+cuda13.2
