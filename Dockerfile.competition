@@ -23,12 +23,17 @@
 #     -t mtc-aic4-eagleai:submission --load .
 # =============================================================================
 
-FROM --platform=linux/amd64 nvcr.io/nvidia/cuda:13.0.1-runtime-ubuntu24.04
+FROM nvcr.io/nvidia/cuda:13.0.1-runtime-ubuntu24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=1
 ENV PYTHONPATH=/app/src:/app/third_party/LightFC
+# Ubuntu 24.04 marks the system Python as "externally managed" (PEP 668) and
+# refuses plain `pip install` outside a venv. This is a throwaway build-time
+# container image, not a shared system Python, so it's safe to override here
+# rather than adding a venv layer for every RUN pip step.
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 WORKDIR /app
 
@@ -37,7 +42,7 @@ WORKDIR /app
 # rather than relying on `COPY . /app` from a local build context.
 # CHANGE REPO_URL/REPO_REF to your actual repo + branch/tag/commit before
 # submitting (pin to a commit SHA for a reproducible submission).
-ARG REPO_URL=https://github.com/Maramallah/AIC.git
+ARG REPO_URL=https://github.com/youssef-othman12/MTC-AIC4-EagleAI.git
 ARG REPO_REF=main
 
 ARG TRT_VER=10.16.1.11-1+cuda13.2
@@ -71,6 +76,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN ln -sf /usr/bin/python3 /usr/bin/python && \
     ln -sf /usr/bin/pip3 /usr/bin/pip
+
+# Ubuntu 24.04's system Python is "externally managed" (PEP 668), which
+# blocks plain `pip install`. Use a venv so pip installs below work without
+# --break-system-packages on each line.
+#
+# --system-site-packages is required here: TensorRT's python bindings
+# (python3-libnvinfer* below) are installed via apt into the SYSTEM Python's
+# site-packages, not this venv. Without this flag, `import tensorrt` inside
+# the venv would fail even though apt installed it correctly.
+RUN python3 -m venv --system-site-packages /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 RUN python -m pip install --upgrade pip setuptools wheel
 
 # ---- TensorRT (pinned) ------------------------------------------------------
