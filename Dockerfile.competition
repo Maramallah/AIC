@@ -45,12 +45,12 @@ WORKDIR /app
 ARG REPO_URL=https://github.com/Maramallah/AIC.git
 ARG REPO_REF=0033461d3b37ff445c10dd764090212b65e904d2
 
-ARG TRT_VER=10.16.1.11-1+cuda13.2
+ARG TRT_VER=11.1.0.106-1+cuda13.3
 ARG TORCH_VERSION=2.9.1
 ARG TORCHVISION_VERSION=0.24.1
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu130
 # Only override these if your requirements.txt onnx/onnxruntime pins turn out
-# to be incompatible with CUDA 13 / TensorRT 10.16 / numpy2 during the build
+# to be incompatible with CUDA 13 / TensorRT 11.1 / numpy2 during the build
 # — see docs/jetson_deployment.md-style checkpoint notes at the bottom.
 ARG ONNX_VERSION=""
 ARG ONNXRUNTIME_VERSION=""
@@ -104,10 +104,16 @@ RUN apt-get update && apt-cache madison libnvinfer10 libnvonnxparsers10 tensorrt
 # RUN wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb \
 #     && dpkg -i cuda-keyring_1.1-1_all.deb && rm cuda-keyring_1.1-1_all.deb
 #
-# IMPORTANT: every libnvinfer*/libnvonnxparsers* package must be pinned to the
-# exact same ${TRT_VER} string, or apt's solver will happily pick a newer
-# +cudaX.Y build for one package and leave the rest unsatisfiable (this is a
-# well-documented TensorRT apt footgun — see NVIDIA/TensorRT#4545/#4593).
+# NOTE: originally pinned to 10.16.1.11-1+cuda13.2 per Ahmed's spec, but that
+# build has since been pruned from NVIDIA's CUDA 13 apt repo — only
+# 11.1.0.106-1+cuda13.3 is available now (confirmed via the apt-cache madison
+# diagnostic above, and via the "Depends: libnvinfer-safe-headers-dev (=
+# 10.16.1.11-1+cuda13.2) but 11.1.0.106-1+cuda13.3 is to be installed" apt
+# resolver error). Bumped TRT_VER accordingly — flag this with Ahmed if the
+# exact old version turns out to matter for compatibility with the eval
+# machines. libnvinfer-safe-headers-dev is a newer package (introduced with
+# TensorRT 11.x) that libnvinfer-dev now depends on, so it's pinned
+# explicitly below rather than left to apt to resolve implicitly.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libnvinfer10=${TRT_VER} \
     libnvinfer-plugin10=${TRT_VER} \
@@ -116,6 +122,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libnvinfer-dispatch10=${TRT_VER} \
     libnvinfer-headers-dev=${TRT_VER} \
     libnvinfer-headers-plugin-dev=${TRT_VER} \
+    libnvinfer-safe-headers-dev=${TRT_VER} \
     libnvinfer-dev=${TRT_VER} \
     libnvinfer-plugin-dev=${TRT_VER} \
     libnvinfer-lean-dev=${TRT_VER} \
