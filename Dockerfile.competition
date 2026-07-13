@@ -75,19 +75,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN ln -sf /usr/bin/python3 /usr/bin/python && \
-    ln -sf /usr/bin/pip3 /usr/bin/pip
-
-# Ubuntu 24.04's system Python is "externally managed" (PEP 668), which
-# blocks plain `pip install`. Use a venv so pip installs below work without
-# --break-system-packages on each line.
-#
-# --system-site-packages is required here: TensorRT's python bindings
-# (python3-libnvinfer* below) are installed via apt into the SYSTEM Python's
-# site-packages, not this venv. Without this flag, `import tensorrt` inside
-# the venv would fail even though apt installed it correctly.
-RUN python3 -m venv --system-site-packages /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-RUN python -m pip install --upgrade pip setuptools wheel
+       ln -sf /usr/bin/pip3 /usr/bin/pip
+   
+   # Ubuntu 24.04's system Python is "externally managed" (PEP 668), which
+   # blocks plain `pip install`. Use a venv so pip installs below work without
+   # --break-system-packages on each line.
+   #
+   # --system-site-packages is required here: TensorRT's python bindings
+   # (python3-libnvinfer* below) are installed via apt into the SYSTEM Python's
+   # site-packages, not this venv. Without this flag, `import tensorrt` inside
+   # the venv would fail even though apt installed it correctly.
+   RUN python3 -m venv --system-site-packages /opt/venv
+   ENV PATH="/opt/venv/bin:$PATH"
+   RUN python -m pip install --upgrade pip setuptools wheel
 
 # ---- TensorRT (pinned) ------------------------------------------------------
 # nvcr.io/nvidia/cuda images normally already ship the NVIDIA CUDA network apt
