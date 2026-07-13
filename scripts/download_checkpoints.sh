@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-REPO="https://github.com/youssef-othman12/MTC-AIC4-EagleAI/releases/download/v1.0-checkpoints"
+REPO="https://github.com/Maramallah/AIC/releases/download/v1.0-checkpoints"
 
 mkdir -p checkpoints
 
