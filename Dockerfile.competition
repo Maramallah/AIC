@@ -94,7 +94,7 @@ RUN ln -sf /usr/bin/python3 /usr/bin/python && \
 # apt repo before trying to pin one. Check this step's output in the Actions
 # log — it prints every available version string for these packages. If
 # TRT_VER below doesn't exactly match one of those, that's the failure.
-RUN apt-get update && apt-cache madison libnvinfer10 libnvonnxparsers10 tensorrt || true
+RUN apt-get update && apt-cache madison libnvinfer11 libnvonnxparsers11 tensorrt || true
 # ---- TensorRT (pinned) ------------------------------------------------------
 # nvcr.io/nvidia/cuda images normally already ship the NVIDIA CUDA network apt
 # repo/keyring for their own CUDA version. If `apt-cache policy libnvinfer10`
@@ -111,15 +111,20 @@ RUN apt-get update && apt-cache madison libnvinfer10 libnvonnxparsers10 tensorrt
 # 10.16.1.11-1+cuda13.2) but 11.1.0.106-1+cuda13.3 is to be installed" apt
 # resolver error). Bumped TRT_VER accordingly — flag this with Ahmed if the
 # exact old version turns out to matter for compatibility with the eval
-# machines. libnvinfer-safe-headers-dev is a newer package (introduced with
-# TensorRT 11.x) that libnvinfer-dev now depends on, so it's pinned
-# explicitly below rather than left to apt to resolve implicitly.
+# machines.
+#
+# IMPORTANT: TensorRT 11.x also renamed the SONAME-versioned runtime packages
+# from the "10" suffix to "11" (libnvinfer10 -> libnvinfer11, etc. — the
+# -dev/-headers/-bin/python3-* packages keep their unversioned names). This
+# is documented in NVIDIA's own Debian install guide for TRT 11.x. Confirmed
+# against the actual "Version ... was not found" apt errors for exactly the
+# *10-suffixed packages below.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libnvinfer10=${TRT_VER} \
-    libnvinfer-plugin10=${TRT_VER} \
-    libnvinfer-vc-plugin10=${TRT_VER} \
-    libnvinfer-lean10=${TRT_VER} \
-    libnvinfer-dispatch10=${TRT_VER} \
+    libnvinfer11=${TRT_VER} \
+    libnvinfer-plugin11=${TRT_VER} \
+    libnvinfer-vc-plugin11=${TRT_VER} \
+    libnvinfer-lean11=${TRT_VER} \
+    libnvinfer-dispatch11=${TRT_VER} \
     libnvinfer-headers-dev=${TRT_VER} \
     libnvinfer-headers-plugin-dev=${TRT_VER} \
     libnvinfer-safe-headers-dev=${TRT_VER} \
@@ -128,7 +133,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libnvinfer-lean-dev=${TRT_VER} \
     libnvinfer-dispatch-dev=${TRT_VER} \
     libnvinfer-vc-plugin-dev=${TRT_VER} \
-    libnvonnxparsers10=${TRT_VER} \
+    libnvonnxparsers11=${TRT_VER} \
     libnvonnxparsers-dev=${TRT_VER} \
     libnvinfer-bin=${TRT_VER} \
     python3-libnvinfer=${TRT_VER} \
