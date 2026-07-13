@@ -1,0 +1,98 @@
+name: Build Competition Submission Image (amd64)
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo_ref:
+        description: "Branch/tag/commit for Dockerfile.competition to git-clone"
+        type: string
+        default: "main"
+  push:
+    paths:
+      - "Dockerfile.competition"
+      - ".github/workflows/build-competition-image.yml"
+
+jobs:
+  build:
+    # ubuntu-latest is already amd64 — this is the whole point of the fix:
+    # no QEMU/emulation needed here at all, since we're no longer targeting
+    # arm64/Jetson. QEMU is only relevant if YOU build locally on an arm64
+    # machine (e.g. Apple Silicon laptop) — see the commented step below.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Free up disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc 2>/dev/null || true
+          docker system prune -af || true
+          df -h /
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Only needed if you ever change runs-on to an arm64 runner and still
+      # need to cross-build amd64:
+      # - name: Set up QEMU
+      #   uses: docker/setup-qemu-action@v3
+      #   with:
+      #     platforms: amd64
+
+      # ---------------------------------------------------------------
+      # CHECKPOINT C1 — build
+      # Common failures here:
+      #   - "unable to select packages... libnvinfer10" -> TRT_VER string
+      #     doesn't exist for this base image's CUDA minor version yet;
+      #     check NVIDIA's apt repo listing for the closest available
+      #     10.16.x.x-1+cuda13.y build.
+      #   - "Could not find a version that satisfies torch==2.9.1" -> wrong
+      #     TORCH_INDEX_URL, or the cu130 index temporarily down; retry.
+      #   - "fatal: could not read Username" cloning the repo -> REPO_URL
+      #     points at a private repo; make it public or switch to an
+      #     actions/checkout-based COPY build instead for CI testing.
+      # ---------------------------------------------------------------
+      - name: Build submission image (linux/amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.competition
+          platforms: linux/amd64
+          tags: mtc-aic4-eagleai:submission
+          build-args: |
+            REPO_REF=${{ inputs.repo_ref || 'main' }}
+          load: true
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Confirm image architecture is amd64
+        run: |
+          docker inspect --format '{{.Architecture}}' mtc-aic4-eagleai:submission
+
+      # ---------------------------------------------------------------
+      # CHECKPOINT C2 — smoke test
+      # This still runs on a CPU-only GitHub runner (no GPU), so it only
+      # proves imports/CLI work, not that TensorRT/CUDA inference itself
+      # runs — that can only be confirmed on the actual evaluation machine.
+      # ---------------------------------------------------------------
+      - name: Smoke test image
+        run: |
+          docker run --rm mtc-aic4-eagleai:submission \
+            python -c "import torch, torchvision, cv2, numpy; print('torch', torch.__version__)"
+          docker run --rm mtc-aic4-eagleai:submission \
+            python -m mtcaic4.infer --help
+
+      - name: Export image for local inspection (optional)
+        run: |
+          mkdir -p dist
+          docker save mtc-aic4-eagleai:submission | gzip > dist/mtcaic4-eagleai-submission.tar.gz
+          sha256sum dist/mtcaic4-eagleai-submission.tar.gz > dist/mtcaic4-eagleai-submission.tar.gz.sha256
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: submission-image
+          path: dist/
+          retention-days: 7

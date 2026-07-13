@@ -1,0 +1,147 @@
+# syntax=docker/dockerfile:1
+# =============================================================================
+# Dockerfile.competition — MTC-AIC4 Phase 3 submission
+# -----------------------------------------------------------------------------
+# Per Ahmed's spec (Phase 3 submission thread):
+#   - Base image  : nvcr.io/nvidia/cuda:13.0.1-runtime-ubuntu24.04
+#   - PyTorch     : 2.9.1, CUDA wheel 13.0
+#   - TensorRT    : 10.16.1.11-1+cuda13.2 (pinned)
+#   - Target arch : linux/amd64 ONLY. The build error mentioned was caused by
+#                   building for arm64 — use QEMU on your own machine ONLY if
+#                   you're on an arm64 host (e.g. Apple Silicon) to cross-build
+#                   amd64; the image you SUBMIT must be plain linux/amd64, no
+#                   QEMU/binfmt artifacts bundled in it.
+#   - Self-contained: this single Dockerfile clones the repo itself, since the
+#                   submission form takes a Dockerfile, not a build context.
+#
+# Build (amd64 host):
+#   docker build --platform linux/amd64 -f Dockerfile.competition -t mtc-aic4-eagleai:submission .
+#
+# Build (arm64 host, e.g. Apple Silicon — cross-build for submission):
+#   docker buildx create --use --name amd64builder   # once
+#   docker buildx build --platform linux/amd64 -f Dockerfile.competition \
+#     -t mtc-aic4-eagleai:submission --load .
+# =============================================================================
+
+FROM --platform=linux/amd64 nvcr.io/nvidia/cuda:13.0.1-runtime-ubuntu24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
+ENV PYTHONPATH=/app/src:/app/third_party/LightFC
+
+WORKDIR /app
+
+# ---- Where the code comes from -------------------------------------------
+# The Dockerfile itself is the submission artifact, so it fetches the repo
+# rather than relying on `COPY . /app` from a local build context.
+# CHANGE REPO_URL/REPO_REF to your actual repo + branch/tag/commit before
+# submitting (pin to a commit SHA for a reproducible submission).
+ARG REPO_URL=https://github.com/youssef-othman12/MTC-AIC4-EagleAI.git
+ARG REPO_REF=main
+
+ARG TRT_VER=10.16.1.11-1+cuda13.2
+ARG TORCH_VERSION=2.9.1
+ARG TORCHVISION_VERSION=0.24.1
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cu130
+# Only override these if your requirements.txt onnx/onnxruntime pins turn out
+# to be incompatible with CUDA 13 / TensorRT 10.16 / numpy2 during the build
+# — see docs/jetson_deployment.md-style checkpoint notes at the bottom.
+ARG ONNX_VERSION=""
+ARG ONNXRUNTIME_VERSION=""
+
+# ---- System dependencies ---------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-dev \
+    git \
+    wget \
+    curl \
+    ca-certificates \
+    gnupg \
+    libglib2.0-0 \
+    libgl1 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    libjpeg-dev \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN ln -sf /usr/bin/python3 /usr/bin/python && \
+    ln -sf /usr/bin/pip3 /usr/bin/pip
+RUN python -m pip install --upgrade pip setuptools wheel
+
+# ---- TensorRT (pinned) ------------------------------------------------------
+# nvcr.io/nvidia/cuda images normally already ship the NVIDIA CUDA network apt
+# repo/keyring for their own CUDA version. If `apt-cache policy libnvinfer10`
+# comes back empty in your build log, uncomment the keyring block below and
+# set the correct Ubuntu/CUDA tag for it.
+#
+# RUN wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb \
+#     && dpkg -i cuda-keyring_1.1-1_all.deb && rm cuda-keyring_1.1-1_all.deb
+#
+# IMPORTANT: every libnvinfer*/libnvonnxparsers* package must be pinned to the
+# exact same ${TRT_VER} string, or apt's solver will happily pick a newer
+# +cudaX.Y build for one package and leave the rest unsatisfiable (this is a
+# well-documented TensorRT apt footgun — see NVIDIA/TensorRT#4545/#4593).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libnvinfer10=${TRT_VER} \
+    libnvinfer-plugin10=${TRT_VER} \
+    libnvinfer-vc-plugin10=${TRT_VER} \
+    libnvinfer-lean10=${TRT_VER} \
+    libnvinfer-dispatch10=${TRT_VER} \
+    libnvinfer-headers-dev=${TRT_VER} \
+    libnvinfer-headers-plugin-dev=${TRT_VER} \
+    libnvinfer-dev=${TRT_VER} \
+    libnvinfer-plugin-dev=${TRT_VER} \
+    libnvinfer-lean-dev=${TRT_VER} \
+    libnvinfer-dispatch-dev=${TRT_VER} \
+    libnvinfer-vc-plugin-dev=${TRT_VER} \
+    libnvonnxparsers10=${TRT_VER} \
+    libnvonnxparsers-dev=${TRT_VER} \
+    libnvinfer-bin=${TRT_VER} \
+    python3-libnvinfer=${TRT_VER} \
+    python3-libnvinfer-dev=${TRT_VER} \
+    python3-libnvinfer-lean=${TRT_VER} \
+    python3-libnvinfer-dispatch=${TRT_VER} \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- Fetch the code (this IS the "code included" requirement) -------------
+RUN git clone --depth 1 --branch "${REPO_REF}" "${REPO_URL}" /app
+
+# ---- PyTorch (per spec: 2.9.1, cu130 wheel) --------------------------------
+RUN python -m pip install \
+    "torch==${TORCH_VERSION}" \
+    "torchvision==${TORCHVISION_VERSION}" \
+    --index-url "${TORCH_INDEX_URL}"
+
+# ---- Repo requirements (torch/torchvision/torchaudio/numpy excluded — ------
+# handled above / left to pip's resolver against the installed torch build) --
+RUN grep -vE '^(torch|torchvision|torchaudio|numpy)([<=> ]|$)' /app/requirements.txt \
+      > /tmp/requirements_no_torch.txt && \
+    python -m pip install -r /tmp/requirements_no_torch.txt
+
+# Optional explicit onnx/onnxruntime overrides if requirements.txt's pins
+# (onnx==1.16.1 / onnxruntime==1.18.1, both CPU-only) don't build cleanly
+# against this stack:
+RUN if [ -n "$ONNX_VERSION" ]; then python -m pip install "onnx==${ONNX_VERSION}"; fi
+RUN if [ -n "$ONNXRUNTIME_VERSION" ]; then python -m pip install "onnxruntime==${ONNXRUNTIME_VERSION}"; fi
+# NOTE: requirements.txt's onnxruntime is CPU-only by design ("Local CPU
+# fallback" per its own comment). If you need GPU-accelerated ONNX Runtime on
+# CUDA 13, plain PyPI onnxruntime-gpu does not support it yet (CUDA 12.x is
+# the current default) — you'd need Microsoft's ort-cuda-13-nightly feed.
+# Don't add that silently; it's a nightly/unstable dependency for a
+# competition submission unless you've explicitly validated it.
+
+RUN chmod +x /app/scripts/*.sh || true
+
+# ---- Build-time smoke check -------------------------------------------------
+RUN python -m py_compile /app/src/mtcaic4/infer.py && \
+    python -m py_compile /app/src/mtcaic4/distill.py && \
+    python -c "import torch, torchvision, cv2, numpy; print('torch', torch.__version__, '| torchvision', torchvision.__version__, '| cv2', cv2.__version__, '| numpy', numpy.__version__)" && \
+    python -m mtcaic4.infer --help >/dev/null && \
+    python -m mtcaic4.distill --help >/dev/null
+
+CMD ["python", "-m", "mtcaic4.infer", "--help"]
