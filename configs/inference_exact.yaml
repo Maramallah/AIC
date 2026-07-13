@@ -1,0 +1,21 @@
+# Exact v6-conservative inference configuration.
+# This file is documentation/config reference only.
+# Default inference behavior is implemented in src/mtcaic4/infer.py.
+
+checkpoint: checkpoints/best_checkpoint.pth.tar
+output: outputs/submissions/submission.csv
+
+exact_reproduction:
+  strict_load: true
+  switch_to_deploy_directly: true
+  eval_cuda_force_cuda: true
+  use_torch_no_grad: true
+  use_inference_mode: false
+  call_train_before_deploy: false
+  delete_ab_attributes: false
+  change_tf32_cudnn_flags: false
+
+expected_health_check:
+  matched: 74293
+  ema_updates: 21517
+  lost_recoveries: 133

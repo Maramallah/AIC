@@ -1,0 +1,25 @@
+# Stage-1 distillation reference hyperparameters.
+# The active CLI defaults are in src/mtcaic4/distill.py and scripts/run_distill.sh.
+
+template_size: 128
+search_size: 256
+template_factor: 2.0
+search_factor: 4.0
+
+pairs_per_seq: 80
+max_gap: 100
+chunk_size: 500
+seed: 42
+
+search_center_jitter: 0.5
+search_scale_jitter: 0.1
+
+batch_size: 16
+epochs: 15
+lr: 5.0e-5
+min_lr: 1.0e-6
+warmup: 3
+alpha: 0.5
+l1_weight: 2.0
+grad_clip: 1.0
+weight_decay: 1.0e-4
