@@ -90,6 +90,11 @@ RUN ln -sf /usr/bin/python3 /usr/bin/python && \
    ENV PATH="/opt/venv/bin:$PATH"
    RUN python -m pip install --upgrade pip setuptools wheel
 
+# DIAGNOSTIC: list what TensorRT versions actually exist in this image's CUDA
+# apt repo before trying to pin one. Check this step's output in the Actions
+# log — it prints every available version string for these packages. If
+# TRT_VER below doesn't exactly match one of those, that's the failure.
+RUN apt-get update && apt-cache madison libnvinfer10 libnvonnxparsers10 tensorrt || true
 # ---- TensorRT (pinned) ------------------------------------------------------
 # nvcr.io/nvidia/cuda images normally already ship the NVIDIA CUDA network apt
 # repo/keyring for their own CUDA version. If `apt-cache policy libnvinfer10`
