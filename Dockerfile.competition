@@ -42,8 +42,8 @@ WORKDIR /app
 # rather than relying on `COPY . /app` from a local build context.
 # CHANGE REPO_URL/REPO_REF to your actual repo + branch/tag/commit before
 # submitting (pin to a commit SHA for a reproducible submission).
-ARG REPO_URL=https://github.com/youssef-othman12/MTC-AIC4-EagleAI.git
-ARG REPO_REF=main
+ARG REPO_URL=https://github.com/Maramallah/AIC.git
+ARG REPO_REF=0033461d3b37ff445c10dd764090212b65e904d2
 
 ARG TRT_VER=10.16.1.11-1+cuda13.2
 ARG TORCH_VERSION=2.9.1
@@ -131,7 +131,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ---- Fetch the code (this IS the "code included" requirement) -------------
-RUN git clone --depth 1 --branch "${REPO_REF}" "${REPO_URL}" /app
+# NOTE: `git clone --branch <ref>` only accepts branch/tag names, not
+# arbitrary commit SHAs, so REPO_REF is fetched+checked-out explicitly here.
+# This works whether REPO_REF is a branch name, tag, or full commit SHA.
+RUN git init -q /app && \
+    cd /app && \
+    git remote add origin "${REPO_URL}" && \
+    git fetch --depth 1 origin "${REPO_REF}" && \
+    git checkout FETCH_HEAD
+
+# ---- Bake in the required checkpoint (image must be self-contained) -------
+# best_checkpoint.pth.tar is .gitignore'd (binary weights don't belong in git
+# history), so it's fetched from a GitHub Release instead. DOWNLOAD_OPTIONAL
+# is left unset/0 on purpose — this only pulls the required inference
+# checkpoint, not the optional distillation-only assets (base checkpoint,
+# OD teacher predictions), keeping the submission image smaller.
+RUN chmod +x /app/scripts/download_checkpoints.sh && \
+    cd /app && bash scripts/download_checkpoints.sh
 
 # ---- PyTorch (per spec: 2.9.1, cu130 wheel) --------------------------------
 RUN python -m pip install \
